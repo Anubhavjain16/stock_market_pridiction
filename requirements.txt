@@ -1,8 +1,7 @@
 streamlit
-pmdarima
 yfinance
 pandas
-numpy>=1.21.0
+numpy
 matplotlib
-statsmodels>=0.13.0
-scipy>=1.7.0
+tensorflow
+scikit-learn
