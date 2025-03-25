@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
+import pmdarima as pm
 import warnings
 
 # Ignore warnings
@@ -26,8 +27,12 @@ def load_data(ticker, start, end):
     data = yf.download(ticker, start=start, end=end)
     return data
 
-st.subheader(f"Stock Data for {ticker}")
 data = load_data(ticker, start_date, end_date)
+if data.empty:
+    st.error("No data found for the given ticker. Please enter a valid stock ticker.")
+    st.stop()
+
+st.subheader(f"Stock Data for {ticker}")
 st.write(data.tail())
 
 # ---- PLOT CLOSING PRICE ----
@@ -42,7 +47,15 @@ st.pyplot(fig)
 # ---- TRAIN ARIMA MODEL ----
 st.subheader("Stock Price Forecasting using ARIMA")
 train_data = data["Close"].dropna()
-model = ARIMA(train_data, order=(5,1,0))  # ARIMA(p=5, d=1, q=0)
+
+# Use auto_arima to find the best ARIMA parameters
+st.write("🔄 Optimizing ARIMA parameters...")
+best_model = pm.auto_arima(train_data, seasonal=False, stepwise=True, suppress_warnings=True)
+order = best_model.order
+st.write(f"📌 Best ARIMA Order: {order}")
+
+# Fit ARIMA model
+model = ARIMA(train_data, order=order)
 fitted_model = model.fit()
 
 # ---- FORECAST PRICES ----
@@ -63,5 +76,5 @@ ax2.set_ylabel("Price (USD)")
 ax2.legend()
 st.pyplot(fig2)
 
-st.success("✅ Prediction Completed!")
-st.sidebar.info("This app predicts stock prices using ARIMA. For better accuracy, try LSTM or Facebook Prophet.")
+st.success("✅ Prediction Completed! Optimized with best ARIMA order.")
+st.sidebar.info("For better accuracy, consider LSTM or Facebook Prophet models.")
