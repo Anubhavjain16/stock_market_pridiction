@@ -3,8 +3,10 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from statsmodels.tsa.arima.model import ARIMA
-import pmdarima as pm
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from sklearn.preprocessing import MinMaxScaler
 import warnings
 
 # Ignore warnings
@@ -12,7 +14,7 @@ warnings.filterwarnings("ignore")
 
 # ---- STREAMLIT UI ----
 st.set_page_config(page_title="Stock Trend Prediction", layout="wide")
-st.title("📈 Stock Trend Prediction Web App")
+st.title("📈 Stock Trend Prediction using LSTM")
 
 # Sidebar Inputs
 st.sidebar.header("User Input")
@@ -48,48 +50,83 @@ ax.set_ylabel("Price (USD)")
 ax.legend()
 st.pyplot(fig)
 
-# ---- TRAIN ARIMA MODEL ----
-st.subheader("🔮 Stock Price Forecasting using ARIMA")
-train_data = data["Close"].dropna()
+# ---- LSTM MODEL IMPLEMENTATION ----
+st.subheader("🔮 Stock Price Forecasting using LSTM")
 
-# Check if there is enough data for ARIMA
-if len(train_data) < 30:
-    st.error("⚠️ Not enough data to train ARIMA. Please select a longer date range.")
+train_data = data["Close"].dropna().values.reshape(-1, 1)
+
+if len(train_data) < 90:
+    st.error("⚠️ Not enough data for LSTM. Select a longer date range.")
     st.stop()
 
-# Auto ARIMA for parameter tuning
-st.write("🔄 Optimizing ARIMA parameters...")
-try:
-    best_model = pm.auto_arima(train_data, seasonal=False, stepwise=True, suppress_warnings=True, error_action="ignore")
-    order = best_model.order
-    st.write(f"📌 Best ARIMA Order: {order}")
+# Normalize data
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(train_data)
 
-    # Fit ARIMA model
-    model = ARIMA(train_data, order=order)
-    fitted_model = model.fit()
+# Create sequences for LSTM
+def create_sequences(data, time_step=60):
+    X, y = [], []
+    for i in range(len(data) - time_step):
+        X.append(data[i:i + time_step, 0])
+        y.append(data[i + time_step, 0])
+    return np.array(X), np.array(y)
 
-    # ---- FORECAST PRICES ----
-    forecast = fitted_model.forecast(steps=forecast_days)
-    forecast_dates = pd.date_range(data.index[-1], periods=forecast_days + 1)[1:]
+time_step = 60
+X, y = create_sequences(scaled_data, time_step)
 
-    # Show forecast results
-    st.write(f"📊 Forecasted Prices for Next {forecast_days} Days")
-    pred_df = pd.DataFrame({"Date": forecast_dates, "Predicted Price": forecast.values})
-    st.write(pred_df)
+# Split into train & test sets
+train_size = int(len(X) * 0.8)
+X_train, y_train = X[:train_size], y[:train_size]
+X_test, y_test = X[train_size:], y[train_size:]
 
-    # ---- PLOT FORECAST ----
-    fig2, ax2 = plt.subplots(figsize=(12, 5))
-    ax2.plot(data.index, data["Close"], label="Historical Price", color="blue")
-    ax2.plot(forecast_dates, forecast, label="Forecasted Price", color="red", linestyle="dashed")
-    ax2.set_xlabel("Date")
-    ax2.set_ylabel("Price (USD)")
-    ax2.legend()
-    st.pyplot(fig2)
+# Reshape input for LSTM
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
-    st.success("✅ Prediction Completed! Optimized with best ARIMA order.")
+# Build LSTM model
+model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(time_step, 1)),
+    Dropout(0.2),
+    LSTM(50, return_sequences=False),
+    Dropout(0.2),
+    Dense(25),
+    Dense(1)
+])
 
-except Exception as e:
-    st.error(f"❌ ARIMA Model failed: {e}")
-    st.stop()
+# Compile and train
+model.compile(optimizer='adam', loss='mean_squared_error')
+st.write("🔄 Training LSTM model...")
+model.fit(X_train, y_train, epochs=20, batch_size=32, verbose=0)
 
-st.sidebar.info("📌 For better accuracy, consider LSTM or Facebook Prophet models.")
+# ---- FORECAST FUTURE PRICES ----
+st.write(f"📊 Forecasting Next {forecast_days} Days...")
+last_sequence = X_test[-1]  # Take the last sequence from test data
+predictions = []
+
+for _ in range(forecast_days):
+    pred = model.predict(last_sequence.reshape(1, time_step, 1), verbose=0)
+    predictions.append(pred[0, 0])
+    last_sequence = np.roll(last_sequence, -1)
+    last_sequence[-1] = pred  # Add prediction to sequence
+
+# Transform back to original scale
+forecast = scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
+
+# Generate forecast dates
+forecast_dates = pd.date_range(data.index[-1], periods=forecast_days + 1)[1:]
+
+# Show forecast results
+pred_df = pd.DataFrame({"Date": forecast_dates, "Predicted Price": forecast.flatten()})
+st.write(pred_df)
+
+# ---- PLOT FORECAST ----
+fig2, ax2 = plt.subplots(figsize=(12, 5))
+ax2.plot(data.index, data["Close"], label="Historical Price", color="blue")
+ax2.plot(forecast_dates, forecast, label="Forecasted Price", color="red", linestyle="dashed")
+ax2.set_xlabel("Date")
+ax2.set_ylabel("Price (USD)")
+ax2.legend()
+st.pyplot(fig2)
+
+st.success("✅ Prediction Completed! LSTM model successfully trained.")
+st.sidebar.info("📌 LSTM is better for long-term patterns, but tuning is crucial for accuracy.")
