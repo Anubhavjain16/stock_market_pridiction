@@ -2,7 +2,7 @@ streamlit
 pmdarima
 yfinance
 pandas
-numpy
+numpy>=1.21.0
 matplotlib
-statsmodels
-scipy
+statsmodels>=0.13.0
+scipy>=1.7.0
