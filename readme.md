@@ -57,13 +57,7 @@ The system implements an **LSTM-based deep learning model** with the following s
 - Fine-tuning **hyperparameters** dynamically.
 - Deploying on **AWS/GCP for scalability**.
 
-## 👨‍💻 Contributors
-- **Your Name** - Developer
 
-## 📜 License
-This project is licensed under the MIT License.
-
----
 
 🌟 **If you find this useful, give it a star!** 🌟
 
